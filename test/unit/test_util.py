@@ -2,6 +2,7 @@ import os
 import re
 import shutil
 from test.unit.util import is_equal_np
+from typing import Tuple
 
 import nibabel as nib
 import numpy as np
@@ -27,20 +28,20 @@ def test_build_dataset():
 
     # init arguments
     config_path = "config/unpaired_labeled_ddf.yaml"
-    log_root = "logs"
-    log_dir = "test_build_dataset"
+    log_dir = "logs"
+    exp_name = "test_build_dataset"
     ckpt_path = ""
 
     # load config
-    config, log_dir = build_config(
-        config_path=config_path, log_root=log_root, log_dir=log_dir, ckpt_path=ckpt_path
+    config, _, _ = build_config(
+        config_path=config_path, log_dir=log_dir, exp_name=exp_name, ckpt_path=ckpt_path
     )
 
     # build dataset
     data_loader_train, dataset_train, steps_per_epoch_train = build_dataset(
         dataset_config=config["dataset"],
         preprocess_config=config["train"]["preprocess"],
-        mode="train",
+        split="train",
         training=False,
         repeat=False,
     )
@@ -51,13 +52,13 @@ def test_build_dataset():
     assert isinstance(steps_per_epoch_train, int)
 
     # remove valid data
-    config["dataset"]["dir"]["valid"] = ""
+    config["dataset"]["valid"]["dir"] = ""
 
     # build dataset
     data_loader_valid, dataset_valid, steps_per_epoch_valid = build_dataset(
         dataset_config=config["dataset"],
         preprocess_config=config["train"]["preprocess"],
-        mode="valid",
+        split="valid",
         training=False,
         repeat=False,
     )
@@ -67,22 +68,18 @@ def test_build_dataset():
     assert steps_per_epoch_valid is None
 
 
-@pytest.mark.parametrize("log_root,log_dir", [("logs", ""), ("logs", "custom")])
-def test_build_log_dir(log_root: str, log_dir: str):
-    """
-    Test build_log_dir for default directory and custom directory
-    """
-
-    built_log_dir = build_log_dir(log_root=log_root, log_dir=log_dir)
+@pytest.mark.parametrize("log_dir,exp_name", [("logs", ""), ("logs", "custom")])
+def test_build_log_dir(log_dir: str, exp_name: str):
+    built_log_dir = build_log_dir(log_dir=log_dir, exp_name=exp_name)
     head, tail = os.path.split(built_log_dir)
-    assert head == log_root
-    if log_dir == "":
+    assert head == log_dir
+    if exp_name == "":
         # use default timestamp based directory
         pattern = re.compile("[0-9]{8}-[0-9]{6}")
         assert pattern.match(tail)
     else:
         # use custom directory
-        assert tail == log_dir
+        assert tail == exp_name
 
 
 class TestSaveArray:
@@ -115,8 +112,7 @@ class TestSaveArray:
             np.random.rand(2, 3, 4, 3),
         ],
     )
-    def test_3d_4d(self, arr: (tf.Tensor, np.ndarray)):
-        """test 3d/4d TensorFlow/Numpy inputs"""
+    def test_3d_4d(self, arr: Tuple[tf.Tensor, np.ndarray]):
         save_array(save_dir=self.save_dir, arr=arr, name=self.arr_name, normalize=True)
         assert self.get_num_files_in_dir(self.png_dir, suffix=".png") == 4
         assert self.get_num_files_in_dir(self.save_dir, suffix=".nii.gz") == 1
@@ -130,8 +126,7 @@ class TestSaveArray:
             [np.random.rand(2, 3, 4, 1), ch_err_msg],
         ],
     )
-    def test_wrong_shape(self, arr: (tf.Tensor, np.ndarray), err_msg: str):
-        """test TensorFlow/Numpy inputs with incorrect shapes"""
+    def test_wrong_shape(self, arr: Tuple[tf.Tensor, np.ndarray], err_msg: str):
         with pytest.raises(ValueError) as err_info:
             save_array(
                 save_dir=self.save_dir, arr=arr, name=self.arr_name, normalize=True
@@ -173,7 +168,7 @@ class TestSaveArray:
         nifti_file_path = os.path.join(self.save_dir, self.arr_name + ".nii.gz")
         # save arr1
         os.makedirs(self.save_dir, exist_ok=True)
-        nib.save(img=nib.Nifti2Image(arr1, affine=np.eye(4)), filename=nifti_file_path)
+        nib.save(img=nib.Nifti1Image(arr1, affine=np.eye(4)), filename=nifti_file_path)
         # save arr2 w/o overwrite
         save_array(
             save_dir=self.save_dir,

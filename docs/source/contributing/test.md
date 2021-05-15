@@ -1,11 +1,28 @@
-# Testing
+# Unit Test
 
 In DeepReg, we use [pytest](https://docs.pytest.org/en/stable/) (not
 [unittest](https://docs.python.org/3/library/unittest.html)) for unit tests to ensure a
 certain code quality and to facilitate the code maintenance.
 
-The testing is checked via [Travis-CI](https://travis-ci.org/github/DeepRegNet/DeepReg)
-and [Codecov](https://codecov.io/gh/DeepRegNet/DeepReg) is used to monitor the test
+For testing the code locally,
+
+- If you only need to test with python 3.7, please execute `pytest` at the repository
+  root:
+
+  ```bash
+  pytest test/
+  ```
+
+- If you want to test with all supported python versions, please execute `tox` at the
+  repository root:
+
+  ```bash
+  tox
+  ```
+
+Moreover, the testing is checked automatically via
+[GitHub workflows](https://github.com/DeepRegNet/DeepReg/actions) and
+[Codecov](https://codecov.io/gh/DeepRegNet/DeepReg) is used to monitor the test
 coverage. While checking the Codecov report in file mode, generally a line highlighted
 by red means it is not covered by test. Please check the
 [Codecov documentation](https://docs.codecov.io/docs/viewing-source-code) for more
@@ -37,7 +54,6 @@ We provide here an example to help understanding the requirements.
 
 ```python
 import pytest
-import logging
 
 
 def subtract(x: int) -> int:
@@ -48,8 +64,6 @@ def subtract(x: int) -> int:
     """
     assert isinstance(x, int), f"input {x} is not int"
     assert x >= 0, f"input {x} is negative"
-    if x == 0:
-        logging.warning("input is zero")
     return x - 1
 
 
@@ -64,11 +78,6 @@ class TestSubtract:
         with pytest.raises(AssertionError) as err_info:
             subtract(x=x)
         assert msg in str(err_info.value)
-
-    def test_warning(self, caplog):
-        caplog.clear() # clear previous log
-        subtract(x=0)
-        assert "input is zero" in caplog.text
 ```
 
 where
@@ -77,8 +86,6 @@ where
 - we [parameterize test](https://docs.pytest.org/en/stable/example/parametrize.html) to
   test different inputs.
 - we catch errors using `pytest.raises` and check error messages.
-- we check warning message using
-  [caplog](https://docs.pytest.org/en/stable/logging.html).
 
 For further usage like [fixture](https://docs.pytest.org/en/stable/fixture.html) and
 other functionalities, please check

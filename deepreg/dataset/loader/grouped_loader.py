@@ -1,24 +1,28 @@
 """
-Loads grouped data
-supports h5 and Nifti formats
-supports labeled and unlabeled data
+Load grouped data.
+Supported formats: h5 and Nifti.
+Image data can be labeled or unlabeled.
 Read https://deepreg.readthedocs.io/en/latest/api/loader.html#module-deepreg.dataset.loader.grouped_loader for more details.
 """
 import random
-from typing import List
+from copy import deepcopy
+from typing import List, Optional, Tuple, Union
 
 from deepreg.dataset.loader.interface import (
     AbstractUnpairedDataLoader,
     GeneratorDataLoader,
 )
 from deepreg.dataset.util import check_difference_between_two_lists
+from deepreg.registry import REGISTRY
 
 
+@REGISTRY.register_data_loader(name="grouped")
 class GroupedDataLoader(AbstractUnpairedDataLoader, GeneratorDataLoader):
     """
-    Loads grouped data
-    sample_index_generator from GeneratorDataLoader is defined to yield
-    indexes of images to load
+    Load grouped data.
+
+    Yield indexes of images to load using
+    sample_index_generator from GeneratorDataLoader.
     AbstractUnpairedLoader handles different file formats
     """
 
@@ -27,12 +31,12 @@ class GroupedDataLoader(AbstractUnpairedDataLoader, GeneratorDataLoader):
         file_loader,
         data_dir_paths: List[str],
         labeled: bool,
-        sample_label: (str, None),
+        sample_label: Optional[str],
         intra_group_prob: float,
         intra_group_option: str,
         sample_image_in_group: bool,
-        seed: (int, None),
-        image_shape: (list, tuple),
+        seed: Optional[int],
+        image_shape: Union[Tuple[int, ...], List[int]],
     ):
         """
         :param file_loader: a subclass of FileLoader
@@ -41,21 +45,28 @@ class GroupedDataLoader(AbstractUnpairedDataLoader, GeneratorDataLoader):
 
           - images
           - labels
+
         :param labeled: bool, true if the data is labeled, false if unlabeled
-        :param sample_label: "sample" or "all", read `get_label_indices` in deepreg/dataset/util.py for more details.
+        :param sample_label: "sample" or "all", read `get_label_indices`
+            in deepreg/dataset/util.py for more details.
         :param intra_group_prob: float between 0 and 1,
 
           - 0 means generating only inter-group samples,
           - 1 means generating only intra-group samples
+
         :param intra_group_option: str, "forward", "backward, or "unconstrained"
         :param sample_image_in_group: bool,
 
-          - if true, only one image pair will be yielded for each group, so one epoch has num_groups pairs of data,
+          - if true, only one image pair will be yielded for each group,
+            so one epoch has num_groups pairs of data,
           - if false, iterate through this loader will generate all possible pairs
-        :param seed: controls the randomness in sampling, if seed=None, then the randomness is not fixed
-        :param image_shape: list or tuple of length 3, corresponding to (dim1, dim2, dim3) of the 3D image
+
+        :param seed: controls the randomness in sampling,
+            if seed=None, then the randomness is not fixed
+        :param image_shape: list or tuple of length 3,
+            corresponding to (dim1, dim2, dim3) of the 3D image
         """
-        super(GroupedDataLoader, self).__init__(
+        super().__init__(
             image_shape=image_shape,
             labeled=labeled,
             sample_label=sample_label,
@@ -93,7 +104,7 @@ class GroupedDataLoader(AbstractUnpairedDataLoader, GeneratorDataLoader):
                     f"There are {self.num_groups} groups, "
                     f"we need at least two groups for inter group sampling"
                 )
-        # calculate number of samples and save pre-calculated sample indices if available
+        # calculate number of samples and save pre-calculated sample indices
         if self.sample_image_in_group is True:
             # one image pair in each group (pair) will be yielded
             self.sample_indices = None
@@ -102,17 +113,18 @@ class GroupedDataLoader(AbstractUnpairedDataLoader, GeneratorDataLoader):
             # all possible pair in each group (pair) will be yielded
             if intra_group_prob not in [0, 1]:
                 raise ValueError(
-                    "Mixing intra and inter groups is not supported when not sampling pairs."
+                    "Mixing intra and inter groups is not supported"
+                    " when not sampling pairs."
                 )
             if intra_group_prob == 0:  # inter group
                 self.sample_indices = self.get_inter_sample_indices()
             else:  # intra group
                 self.sample_indices = self.get_intra_sample_indices()
 
-            self._num_samples = len(self.sample_indices)
+            self._num_samples = len(self.sample_indices)  # type: ignore
 
     def validate_data_files(self):
-        """If the data are labeled, verify image loader and label loader have the same files"""
+        """If the data are labeled, verify image loader and label loader have the same files."""
         if self.labeled is True:
             image_ids = self.loader_moving_image.get_data_ids()
             label_ids = self.loader_moving_label.get_data_ids()
@@ -169,8 +181,9 @@ class GroupedDataLoader(AbstractUnpairedDataLoader, GeneratorDataLoader):
           - image1 of group1 is moving image
           - image2 of group2 is fixed image
 
-        All pairs of images in the dataset are registered. Assuming group i has ni images,
-        and that N=[n1, n2, ..., nI], then in total the number of samples are:
+        All pairs of images in the dataset are registered.
+        Assuming group i has ni images and that N=[n1, n2, ..., nI],
+        then in total the number of samples are:
         sum(N) * (sum(N)-1) - sum( N * (N-1) )
 
         :return: a list of sample indices
@@ -211,7 +224,9 @@ class GroupedDataLoader(AbstractUnpairedDataLoader, GeneratorDataLoader):
                     num_images_in_group = self.num_images_per_group[group_index]
                     if num_images_in_group < 2:
                         # skip groups having <2 images
-                        continue
+                        # currently have not encountered
+                        continue  # pragma: no cover
+
                     image_index1, image_index2 = rnd.sample(
                         [i for i in range(num_images_in_group)], 2
                     )  # sample two unique indices
@@ -231,7 +246,8 @@ class GroupedDataLoader(AbstractUnpairedDataLoader, GeneratorDataLoader):
                         pass
                     else:
                         raise ValueError(
-                            f"Unknown intra_group_option, must be forward/backward/unconstrained, "
+                            f"Unknown intra_group_option, "
+                            f"must be forward/backward/unconstrained, "
                             f"got {self.intra_group_option}"
                         )
                 else:
@@ -253,7 +269,7 @@ class GroupedDataLoader(AbstractUnpairedDataLoader, GeneratorDataLoader):
         else:
             # sample indices are pre-calculated
             assert self.sample_indices is not None
-            sample_indices = self.sample_indices.copy()
+            sample_indices = deepcopy(self.sample_indices)
             rnd.shuffle(sample_indices)  # shuffle in place
             for sample_index in sample_indices:
                 group_index1, image_index1, group_index2, image_index2 = sample_index

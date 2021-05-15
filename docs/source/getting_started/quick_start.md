@@ -12,7 +12,7 @@ Train a registration network using unpaired and labeled example data with a pred
 configuration:
 
 ```bash
-deepreg_train --gpu "" --config_path config/unpaired_labeled_ddf.yaml --log_dir test
+deepreg_train --gpu "" --config_path config/unpaired_labeled_ddf.yaml --exp_name test
 ```
 
 where:
@@ -27,13 +27,13 @@ where:
 Once trained, evaluate the network using a test dataset:
 
 ```bash
-deepreg_predict --gpu "" --ckpt_path logs/test/save/weights-epoch2.ckpt --mode test
+deepreg_predict --gpu "" --ckpt_path logs/test/save/ckpt-2 --split test
 ```
 
 where:
 
 - `--ckpt_path <filepath>` specifies the checkpoint file path.
-- `--mode test` specifies prediction on the test dataset.
+- `--split test` specifies prediction on the test dataset.
 
 ## Warp an image
 

@@ -1,27 +1,32 @@
 """
 Module to generate visualisations of data
-command line interface
-requires ffmpeg writer to write gif files
+at command line interface.
+Requires ffmpeg writer to write gif files
 """
 
 import argparse
 import os
+from typing import List
 
 import matplotlib.animation as animation
 import matplotlib.pyplot as plt
 import numpy as np
 import numpy.matlib
 
+from deepreg import log
 from deepreg.dataset.loader.nifti_loader import load_nifti_file
-from deepreg.model.layer_util import warp_image_ddf
+from deepreg.model.layer import Warping
+
+logger = log.get(__name__)
 
 
-def string_to_list(string):
+def string_to_list(string: str) -> List[str]:
     """
-    converts a comma separated string to a list of strings
-    also removes leading or trailing spaces from each element in list
+    Converts a comma separated string to a list of strings
+    also removes leading or trailing spaces from each element in list.
 
     :param string: string which is to be converted to list
+    :return: list of strings
     """
     return [elem.strip() for elem in string.split(",")]
 
@@ -29,7 +34,7 @@ def string_to_list(string):
 def gif_slices(img_paths, save_path="", interval=50):
     """
     Generates and saves gif of slices of image
-    supports multiple images to generate multiple gif files
+    supports multiple images to generate multiple gif files.
 
     :param img_paths: list or comma separated string of image paths
     :param save_path: path to directory where visualisation/s is/are to be saved
@@ -60,13 +65,13 @@ def gif_slices(img_paths, save_path="", interval=50):
         )
 
         anim.save(path_to_anim_save)
-        print("Animation saved to:", path_to_anim_save)
+        logger.info("Animation saved to: %s.", path_to_anim_save)
 
 
 def tile_slices(img_paths, save_path="", fname=None, slice_inds=None, col_titles=None):
     """
-    Generates a tiled plot of muliple images for multiple slices in the image
-    rows are different slices and columns are different images
+    Generate a tiled plot of multiple images for multiple slices in the image.
+    Rows are different slices, columns are different images.
 
     :param img_paths: list or comma separated string of image paths
     :param save_path: path to directory where visualisation/s is/are to be saved
@@ -96,13 +101,10 @@ def tile_slices(img_paths, save_path="", fname=None, slice_inds=None, col_titles
 
     plt.figure(figsize=(num_imgs * 2, num_inds * 2))
 
-    imgs = []
-    for img_path in img_paths:
-        img = load_nifti_file(img_path)
-        imgs.append(img)
+    imgs = [load_nifti_file(p) for p in img_paths]
 
-    for img, col_num in zip(imgs, range(num_imgs)):
-        for index, row_num in zip(slice_inds, range(num_inds)):
+    for col_num, img in enumerate(imgs):
+        for row_num, index in enumerate(slice_inds):
             plt.subplot(num_inds, num_imgs, subplot_mat[row_num, col_num])
             plt.imshow(img[:, :, index])
             plt.axis("off")
@@ -113,14 +115,14 @@ def tile_slices(img_paths, save_path="", fname=None, slice_inds=None, col_titles
         fname = "visualisation.png"
     save_fig_to = os.path.join(save_path, fname)
     plt.savefig(save_fig_to)
-    print("Plot saved to:", save_fig_to)
+    logger.info("Plot saved to: %s", save_fig_to)
 
 
 def gif_warp(
     img_paths, ddf_path, slice_inds=None, num_interval=100, interval=50, save_path=""
 ):
     """
-    Apply ddf to image slice/s to generate gif
+    Apply ddf to image slice/s to generate gif.
 
     :param img_paths: list or comma separated string of image paths
     :param ddf_path: path to ddf to use for warping
@@ -152,10 +154,11 @@ def gif_warp(
             for ddf_scaler in ddf_scalers:
                 image = load_nifti_file(img_path)
                 ddf = load_nifti_file(ddf_path)
+                fixed_image_shape = ddf.shape[:3]
                 image = np.expand_dims(image, axis=0)
                 ddf = np.expand_dims(ddf, axis=0) * ddf_scaler
 
-                warped_image = warp_image_ddf(image=image, ddf=ddf, grid_ref=None)
+                warped_image = Warping(fixed_image_size=fixed_image_shape)([ddf, image])
                 warped_image = np.squeeze(warped_image.numpy())
 
                 frame = plt.imshow(
@@ -174,17 +177,18 @@ def gif_warp(
             )
 
             anim.save(path_to_anim_save)
-            print("Animation saved to:", path_to_anim_save)
+            logger.info("Animation saved to: %s", path_to_anim_save)
 
 
 def gif_tile_slices(img_paths, save_path=None, size=(2, 2), fname=None, interval=50):
     """
-    Creates tiled gif over slices of multiple images
+    Creates tiled gif over slices of multiple images.
 
     :param img_paths: list or comma separated string of image paths
     :param save_path: path to directory where visualisation/s is/are to be saved
     :param interval: time in miliseconds between frames of gif
-    :param size: number of columns and rows of images for the tiled gif (tuple e.g. (2,2))
+    :param size: number of columns and rows of images for the tiled gif
+        (tuple e.g. (2,2))
     :param fname: filename to save visualisation to
     """
     if type(img_paths) is str:
@@ -192,7 +196,7 @@ def gif_tile_slices(img_paths, save_path=None, size=(2, 2), fname=None, interval
 
     num_images = np.prod(size)
     if int(len(img_paths)) != int(num_images):
-        raise Exception(
+        raise ValueError(
             "The number of images supplied is "
             + str(len(img_paths))
             + " whereas the number required is "
@@ -209,7 +213,7 @@ def gif_tile_slices(img_paths, save_path=None, size=(2, 2), fname=None, interval
         img = load_nifti_file(img_path)
         shape = np.shape(img)
         if shape != img_shape:
-            raise Exception("all images do not have equal shapes")
+            raise ValueError("all images do not have equal shapes")
         imgs.append(img)
 
     frames = []
@@ -251,13 +255,16 @@ def gif_tile_slices(img_paths, save_path=None, size=(2, 2), fname=None, interval
     path_to_anim_save = os.path.join(save_path, fname)
 
     anim.save(path_to_anim_save)
-    print("Animation saved to:", path_to_anim_save)
+    logger.info("Animation saved to: %s", path_to_anim_save)
 
 
 def main(args=None):
     """
-    CLI for deepreg_vis tool
-    reuires ffmpeg wirter to write gif files
+    CLI for deepreg_vis tool.
+
+    Requires ffmpeg wirter to write gif files.
+
+    :param args:
     """
     parser = argparse.ArgumentParser(
         description="deepreg_vis", formatter_class=argparse.RawTextHelpFormatter
@@ -266,14 +273,18 @@ def main(args=None):
     parser.add_argument(
         "--mode",
         "-m",
-        help="Mode of visualisation \n0 for animtion over image slices, \n1 for warp animation, \n2 for tile plot",
+        help="Mode of visualisation \n"
+        "0 for animtion over image slices, \n"
+        "1 for warp animation, \n"
+        "2 for tile plot",
         type=int,
         required=True,
     )
     parser.add_argument(
         "--image-paths",
         "-i",
-        help="File path for image file (can specify multiple paths using a comma separated string)",
+        help="File path for image file "
+        "(can specify multiple paths using a comma separated string)",
         type=str,
         required=True,
     )
@@ -286,42 +297,51 @@ def main(args=None):
 
     parser.add_argument(
         "--interval",
-        help="Interval between frames of animation (in miliseconds) \nApplicable only if --mode 0 or --mode 1 or --mode 3",
+        help="Interval between frames of animation (in miliseconds)\n"
+        "Applicable only if --mode 0 or --mode 1 or --mode 3",
         type=int,
         default=50,
     )
     parser.add_argument(
         "--ddf-path",
-        help="Path to ddf used for warping image/s \nApplicable only and required if --mode 1",
+        help="Path to ddf used for warping images\n"
+        "Applicable only and required if --mode 1",
         type=str,
         default=None,
     )
     parser.add_argument(
         "--num-interval",
-        help="Number of intervals to use for warping \nApplicable only if --mode 1",
+        help="Number of intervals to use for warping\n" "Applicable only if --mode 1",
         type=int,
         default=100,
     )
     parser.add_argument(
         "--slice-inds",
-        help="Comma separated string of indexes of slices to be used for the visualisation \nApplicable only if --mode 1 or --mode 2",
+        help="Comma separated string of indexes of slices"
+        " to be used for the visualisation\n"
+        "Applicable only if --mode 1 or --mode 2",
         type=str,
         default=None,
     )
     parser.add_argument(
         "--fname",
-        help="File name (with extension like .png, .jpeg, .gif, ...) to save visualisation to \nApplicable only if --mode 2 or --mode 3",
+        help="File name (with extension like .png, .jpeg, .gif, ...)"
+        " to save visualisation to\n"
+        "Applicable only if --mode 2 or --mode 3",
         type=str,
         default=None,
     )
     parser.add_argument(
         "--col-titles",
-        help="Comma separated string of column titles to use (inferred from file names if not provided) \nApplicable only if --mode 2",
+        help="Comma separated string of column titles to use "
+        "(inferred from file names if not provided)\n"
+        "Applicable only if --mode 2",
         default=None,
     )
     parser.add_argument(
         "--size",
-        help="Comma separated string of number of columns and rows (e.g. '2,2') \nApplicable only if --mode 3",
+        help="Comma separated string of number of columns and rows (e.g. '2,2')\n"
+        "Applicable only if --mode 3",
         default="2,2",
     )
 
@@ -332,11 +352,11 @@ def main(args=None):
         args.slice_inds = string_to_list(args.slice_inds)
         args.slice_inds = [int(elem) for elem in args.slice_inds]
 
-    if args.mode is int(0):
+    if args.mode == 0:
         gif_slices(
             img_paths=args.image_paths, save_path=args.save_path, interval=args.interval
         )
-    elif args.mode is int(1):
+    elif args.mode == 1:
         if args.ddf_path is None:
             raise Exception("--ddf-path is required when using --mode 1")
         gif_warp(
@@ -347,7 +367,7 @@ def main(args=None):
             interval=args.interval,
             save_path=args.save_path,
         )
-    elif args.mode is int(2):
+    elif args.mode == 2:
         tile_slices(
             img_paths=args.image_paths,
             save_path=args.save_path,
@@ -355,7 +375,7 @@ def main(args=None):
             slice_inds=args.slice_inds,
             col_titles=args.col_titles,
         )
-    elif args.mode is int(3):
+    elif args.mode == 3:
         size = tuple([int(elem) for elem in string_to_list(args.size)])
         gif_tile_slices(
             img_paths=args.image_paths,
@@ -367,4 +387,4 @@ def main(args=None):
 
 
 if __name__ == "__main__":
-    main()
+    main()  # pragma: no cover
